@@ -4,6 +4,7 @@ import (
 	"context"
 )
 
+// NewIterator is constructor for object, that generates data into a single output by traverse items from iterator
 func NewIterator[T any](
 	ctx context.Context,
 	iterator func(yield func(request T) bool),

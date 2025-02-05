@@ -2,6 +2,7 @@ package pipelines
 
 import (
 	"context"
+	"fmt"
 )
 
 type Aggregator[T any] interface {
@@ -27,5 +28,11 @@ func Consume[T any](
 				return err
 			}
 		}
+	}
+}
+
+func Print[T any](v <-chan T) {
+	for value := range v {
+		fmt.Println(value)
 	}
 }

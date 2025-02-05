@@ -22,6 +22,15 @@ type SearchEngine interface {
 	Search(ctx context.Context, request *SearchRequest) *SearchResponse
 }
 
+type CustomAggregator interface {
+	Aggregate(ctx context.Context, response *SearchResponse) error
+	Summary() ([]string, error)
+}
+
+type AggregatorFactory interface {
+	New() CustomAggregator
+}
+
 type SearchRequest struct {
 	Query  string
 	engine SearchEngine
@@ -51,14 +60,17 @@ func (that *DummySearchEngine) Search(ctx context.Context, request *SearchReques
 
 type Searcher struct {
 	engines []SearchEngine
+	results AggregatorFactory
 	timeout time.Duration
 }
 
 func NewSearcher(
+	results AggregatorFactory,
 	timeout time.Duration,
 	engines ...SearchEngine,
 ) *Searcher {
 	return &Searcher{
+		results: results,
 		timeout: timeout,
 		engines: engines,
 	}
@@ -75,7 +87,7 @@ func (that *Searcher) Search(ctx context.Context, query string) ([]string, error
 }
 
 func (that *Searcher) search(ctx context.Context, query string) ([]string, error) {
-	var result SearchAggregator
+	result := that.results.New()
 
 	err := Consume(
 		context.Background(), // non cancelable consume
@@ -95,7 +107,7 @@ func (that *Searcher) search(ctx context.Context, query string) ([]string, error
 				)...,
 			)...,
 		),
-		&result,
+		result,
 	)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return nil, err
@@ -116,6 +128,12 @@ func (that *Searcher) newRequestIterator(query string) func(yield func(*SearchRe
 			}
 		}
 	}
+}
+
+type SearchAggregatorFactory struct{}
+
+func (that *SearchAggregatorFactory) New() CustomAggregator {
+	return &SearchAggregator{}
 }
 
 type SearchAggregator struct {
@@ -154,6 +172,7 @@ func (that *SearchAggregator) Summary() ([]string, error) {
 
 func TestSearcher(t *testing.T) {
 	searcher := NewSearcher(
+		&SearchAggregatorFactory{},
 		500*time.Millisecond,
 		&DummySearchEngine{name: "engine1", duration: 50 * time.Duration(time.Millisecond)},
 		&DummySearchEngine{name: "engine2", duration: 10 * time.Duration(time.Millisecond)},
